@@ -7,6 +7,7 @@ const rateLimit = require('express-rate-limit');
 
 const reviewsRouter = require('./routes/reviews');
 const contactRouter = require('./routes/contact');
+const prisma = require('./db/init');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -34,7 +35,21 @@ const writeLimiter = rateLimit({
 app.use('/api/reviews', (req, res, next) => (req.method === 'POST' ? writeLimiter(req, res, next) : next()));
 app.use('/api/contact', (req, res, next) => (req.method === 'POST' ? writeLimiter(req, res, next) : next()));
 
-app.get('/api/health', (req, res) => res.json({ status: 'ok' }));
+// Health check that verifies database connection
+app.get('/api/health', async (req, res) => {
+  try {
+    // Try a simple database query to verify connection
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ status: 'ok', database: 'connected' });
+  } catch (error) {
+    console.error('Database health check failed:', error);
+    res.status(500).json({ 
+      status: 'error', 
+      database: 'disconnected',
+      error: error.message 
+    });
+  }
+});
 
 app.use('/api/reviews', reviewsRouter);
 app.use('/api/contact', contactRouter);
@@ -44,10 +59,23 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 // Central error handler
 app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Something went wrong on the server.' });
+  console.error('Error:', err);
+  res.status(500).json({ 
+    error: 'Something went wrong on the server.',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
-app.listen(PORT, () => {
-  console.log(`Upveil Technology backend listening on http://localhost:${PORT}`);
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, closing database connection...');
+  await prisma.$disconnect();
+  process.exit(0);
 });
+
+const server = app.listen(PORT, () => {
+  console.log(`✅ Upveil Technology backend listening on http://localhost:${PORT}`);
+  console.log(`📊 Database: ${process.env.DATABASE_URL ? 'Configured' : 'NOT CONFIGURED'}`);
+});
+
+module.exports = app;
