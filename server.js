@@ -12,6 +12,13 @@ const prisma = require('./db/init');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Verify DATABASE_URL is set
+if (!process.env.DATABASE_URL) {
+  console.error('❌ CRITICAL: DATABASE_URL is not set!');
+  console.error('Please add DATABASE_URL to your Vercel environment variables.');
+  console.error('Get it from: Vercel Dashboard → Your Project → Storage → Postgres');
+}
+
 const allowedOrigins = (process.env.CORS_ORIGIN || '*')
   .split(',')
   .map((o) => o.trim());
@@ -35,18 +42,23 @@ const writeLimiter = rateLimit({
 app.use('/api/reviews', (req, res, next) => (req.method === 'POST' ? writeLimiter(req, res, next) : next()));
 app.use('/api/contact', (req, res, next) => (req.method === 'POST' ? writeLimiter(req, res, next) : next()));
 
-// Health check that verifies database connection
+// Health check endpoint with database verification
 app.get('/api/health', async (req, res) => {
   try {
-    // Try a simple database query to verify connection
+    // Verify database connection
     await prisma.$queryRaw`SELECT 1`;
-    res.json({ status: 'ok', database: 'connected' });
+    res.json({ 
+      status: 'ok',
+      database: 'connected',
+      timestamp: new Date().toISOString()
+    });
   } catch (error) {
-    console.error('Database health check failed:', error);
+    console.error('❌ Health check failed:', error.message);
     res.status(500).json({ 
-      status: 'error', 
+      status: 'error',
       database: 'disconnected',
-      error: error.message 
+      error: 'Database connection failed',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 });
@@ -59,7 +71,8 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'Not found.' }));
 
 // Central error handler
 app.use((err, req, res, next) => {
-  console.error('Error:', err);
+  console.error('❌ Server Error:', err.message);
+  console.error(err.stack);
   res.status(500).json({ 
     error: 'Something went wrong on the server.',
     message: process.env.NODE_ENV === 'development' ? err.message : undefined
@@ -68,14 +81,14 @@ app.use((err, req, res, next) => {
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
-  console.log('SIGTERM received, closing database connection...');
+  console.log('SIGTERM received, closing connections...');
   await prisma.$disconnect();
-  process.exit(0);
+  server.close();
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`✅ Upveil Technology backend listening on http://localhost:${PORT}`);
-  console.log(`📊 Database: ${process.env.DATABASE_URL ? 'Configured' : 'NOT CONFIGURED'}`);
+  console.log(`✅ Upveil Technology backend listening on port ${PORT}`);
+  console.log(`📊 Database configured: ${process.env.DATABASE_URL ? '✅ Yes' : '❌ NO - CONFIGURE NOW!'}`);
 });
 
 module.exports = app;
