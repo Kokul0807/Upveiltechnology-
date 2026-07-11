@@ -9,8 +9,9 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:seed": "node prisma/seed.js",
-    "build": "prisma generate",
-    "postbuild": "prisma migrate deploy && node prisma/seed.js"
+    "setup:db": "node scripts/setup-db.js",
+    "build": "npm run prisma:generate",
+    "postbuild": "npm run setup:db"
   },
   "license": "MIT",
   "dependencies": {
@@ -24,5 +25,8 @@
   "devDependencies": {
     "nodemon": "^3.1.4",
     "prisma": "^5.15.0"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }
